@@ -201,7 +201,7 @@ function calc(){
   var baki=num(ui.baki),paid=num(ui.paid),vegTotal=rnd(sub),total=rnd(vegTotal+baki);
   return {items:items,sub:vegTotal,baki:baki,minus:0,total:total,paid:paid,prev:baki,due:rnd(total-paid)};
 }
-function phoneNorm(p){var d=String(p||'').replace(/\D/g,'');if(d.length===10)return '91'+d;if(d.length>=11)return d;return ''}
+function phoneNorm(p){var d=String(p||'').replace(/\D/g,'').replace(/^0+/,'');if(d.length===10)return '91'+d;if(d.length===12&&d.indexOf('91')===0)return d;if(d.length>=11)return d;return ''}
 function waLink(phone,text){return 'https://wa.me/'+phoneNorm(phone)+'?text='+encodeURIComponent(text)}
 function billMsg(b){
   var L=['*'+S.shop+'*','ग्राहक: '+b.custName,'तारीख: '+dmy(b.date),''];
@@ -274,9 +274,14 @@ function imgFallback(blob,name){
   var dl=function(){var u=URL.createObjectURL(blob),a=document.createElement('a');a.href=u;a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(function(){URL.revokeObjectURL(u)},4000);done()};
   try{
     if(navigator.clipboard&&window.ClipboardItem){
-      navigator.clipboard.write([new ClipboardItem({'image/png':blob})]).then(function(){toast('फोटो कॉपी हो गई। WhatsApp में Ctrl+V से चिपकाएँ')},dl);
+      navigator.clipboard.write([new ClipboardItem({'image/png':blob})]).then(function(){toast('फोटो कॉपी हो गई। चैट में Paste (चिपकाएँ) करें')},dl);
     }else dl();
   }catch(e){dl()}
+}
+function copyBillImg(id){
+  var b=S.bills.find(function(x){return x.id===id});if(!b)return;
+  toast('फोटो बन रही है…');
+  billImage(b).then(function(blob){imgFallback(blob,'bill-'+b.date+'-'+b.id+'.png')}).catch(function(){toast('फोटो नहीं बनी')});
 }
 function shareBillImg(id){
   var b=S.bills.find(function(x){return x.id===id});if(!b)return;
@@ -351,7 +356,7 @@ function billPreview(){
     '<div><dt>इस बिल का कुल</dt><dd>'+fmt(b.total)+'</dd></div>'+
     (b.paid?'<div><dt>अभी मिले</dt><dd>'+fmt(b.paid)+'</dd></div>':'')+
     '<div class="due"><dt>कुल बाकी</dt><dd>'+fmt(b.due)+'</dd></div></dl>'+
-    '<button class="btn wa big" data-act="shareImg" data-id="'+b.id+'">बिल की फोटो WhatsApp पर भेजें</button><p class="small" style="margin:6px 0 0">दबाने पर WhatsApp चुनें, फिर ग्राहक चुनें। फोटो में बिल ऐसा ही दिखेगा।</p><div class="acts"><a class="btn ghost" href="'+link+'" target="_blank" rel="noopener">सिर्फ टेक्स्ट भेजें</a><button class="btn ghost" data-act="copyBill" data-id="'+b.id+'">टेक्स्ट कॉपी करें</button></div>'+
+    '<button class="btn wa big" data-act="shareImg" data-id="'+b.id+'">बिल की फोटो WhatsApp पर भेजें</button><p class="small" style="margin:6px 0 0">दबाने पर WhatsApp चुनें, फिर ग्राहक चुनें। फोटो में बिल ऐसा ही दिखेगा।</p><div class="acts"><button class="btn ghost" data-act="copyImg" data-id="'+b.id+'">1. फोटो कॉपी करें</button>'+(phoneNorm(c?c.phone:'')?'<a class="btn ghost" href="https://wa.me/'+phoneNorm(c.phone)+'" target="_blank" rel="noopener">2. '+esc(b.custName)+' का चैट खोलें</a>':'')+'</div><p class="small" style="margin:6px 0 0">'+(phoneNorm(c?c.phone:'')?'फोटो कॉपी करके चैट खोलें, फिर चैट में Paste (चिपकाएँ) करके भेजें।':'ग्राहक का नंबर सेव करेंगे तो यहाँ उसका चैट खोलने का बटन आएगा।')+'</p><div class="acts"><a class="btn ghost" href="'+link+'" target="_blank" rel="noopener">सिर्फ टेक्स्ट भेजें</a><button class="btn ghost" data-act="copyBill" data-id="'+b.id+'">टेक्स्ट कॉपी करें</button></div>'+
     (c&&phoneNorm(c.phone)?'':'<p class="small" style="margin-bottom:0">ग्राहक का नंबर सेव करेंगे तो WhatsApp सीधे उसी के पास खुलेगा।</p>')+
     '<button class="btn big" data-act="newBill">नया बिल बनाएँ</button></section>';
 }
@@ -425,6 +430,7 @@ document.addEventListener('click',function(e){
   if(a==='login'){doLogin();return}
   if(a==='logout'){doLogout();return}
   if(a==='shareImg'){shareBillImg(id);return}
+  if(a==='copyImg'){copyBillImg(id);return}
   if(a==='inc'||a==='dec'){
     var rid=row.dataset.id,cur=num(ui.w[rid]),nx=Math.max(0,cur+(a==='inc'?1:-1));
     ui.w[rid]=nx>0?String(nx):'';row.querySelector('.kg').value=ui.w[rid];updateRow(row);updateTotals();
