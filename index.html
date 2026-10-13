@@ -112,6 +112,7 @@ table.bill td:last-child{text-align:right;font-weight:700;white-space:nowrap}
 .acts{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
 .acts>*{flex:1 1 140px}
 @media (prefers-reduced-motion:no-preference){.row,.btn{transition:background .15s,border-color .15s}}
+.login{text-align:center;margin-top:30px}.login p{margin:8px 0 0}
 </style>
 
 <div class="wrap">
@@ -129,6 +130,9 @@ table.bill td:last-child{text-align:right;font-weight:700;white-space:nowrap}
 </div></nav>
 <div class="toast" id="toast" hidden></div>
 
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <script>
 (function(){
 var KEY='sabzi_bill_v1';
@@ -168,11 +172,12 @@ function mergeVeg(list){
 function seed(){
   return {shop:'पांडे जी सब्ज़ी',vegMerged:true,
     veg:vegFromCatalog(),
-    customers:[{id:uid(),name:'राजू किराना (उदाहरण)',phone:'',opening:0,rates:{}},{id:uid(),name:'शर्मा स्टोर (उदाहरण)',phone:'',opening:0,rates:{}}],
+    customers:[],
     bills:[],payments:[]};
 }
 function load(){try{var r=localStorage.getItem(KEY);if(r){var o=JSON.parse(r);if(o&&o.veg&&o.customers&&o.bills){o.payments=o.payments||[];if(o.shop==='मेरी सब्ज़ी दुकान'||!o.shop)o.shop='पांडे जी सब्ज़ी';if(!o.vegMerged){o.veg=mergeVeg(o.veg);o.vegMerged=true}return o}}}catch(e){}return seed()}
-function save(){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}}
+function save(){if(cloud.on){cloudSaveCore();return}try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}}
+var cloud={on:false,local:false,uid:null,email:'',ref:null};
 var S=load();
 save();
 try{if(navigator.storage&&navigator.storage.persist)navigator.storage.persist()}catch(e){}
@@ -313,13 +318,13 @@ function hisaabTab(){
       var msg='नमस्ते '+x.c.name+', आपका ₹'+fmtN(x.b)+' बाकी है। - '+S.shop;
       return '<div class="ud"><div class="top"><b>'+esc(x.c.name)+'</b><span class="pill">'+fmt(x.b)+'</span></div><div class="act"><input id="pay-'+x.c.id+'" inputmode="decimal" placeholder="पैसा मिला ₹" aria-label="'+esc(x.c.name)+' से मिला पैसा"><button class="btn" data-act="pay" data-id="'+x.c.id+'">जमा करें</button><button class="btn ghost" data-act="clearBal" data-id="'+x.c.id+'">पूरा मिला</button></div><a class="small" href="'+waLink(x.c.phone,msg)+'" target="_blank" rel="noopener" style="color:var(--accent);font-weight:700">WhatsApp पर याद दिलाएँ</a></div>'}).join(''):'<div class="empty">किसी का बाकी नहीं है।</div>')+'</section>'+
     '<h2>पुराने बिल</h2><section class="card">'+(hist.length?hist.map(function(b){return '<div class="hist"><button class="open" data-act="viewBill" data-id="'+b.id+'"><span class="t">'+esc(b.custName)+'</span><br><small>'+dmy(b.date)+' · बिल '+fmt(b.total)+' · मिले '+fmt(b.paid)+'</small></button><button class="link" data-act="delBill" data-id="'+b.id+'">हटाएँ</button></div>'}).join(''):'<div class="empty">अभी कोई बिल सेव नहीं हुआ।</div>')+'</section>'+
-    '<h2>सेटिंग</h2><section class="card"><label class="lbl" for="shop">दुकान का नाम (बिल पर दिखेगा)</label><input id="shop" value="'+esc(S.shop)+'">'+
+    '<h2>सेटिंग</h2><section class="card">'+acct()+'<label class="lbl" for="shop">दुकान का नाम (बिल पर दिखेगा)</label><input id="shop" value="'+esc(S.shop)+'">'+
     '<p class="small" style="margin:0 0 6px">ग्राहक सूची और बाकी WhatsApp पर भेजकर रख लें। कभी डेटा चला जाए तो वहीं से वापस डाल सकते हैं।</p><div class="acts"><a class="btn wa" href="'+waLink('',custListMsg())+'" target="_blank" rel="noopener">सूची WhatsApp पर भेजें</a></div><label class="lbl" for="listBox" style="margin-top:12px">सूची से ग्राहक वापस डालें</label><textarea id="listBox" placeholder="WhatsApp से कॉपी की हुई सूची यहाँ चिपकाएँ"></textarea><button class="btn ghost" style="margin:8px 0 14px;width:100%" data-act="restoreList">ग्राहक वापस डालें</button><hr style="border:0;border-top:1px solid var(--line);margin:0 0 12px">'+
     '<p class="small" style="margin:14px 0 6px">बैकअप: फोन बदलने या ब्राउज़र साफ करने से पहले कॉपी करके कहीं रख लें।</p><div class="acts"><button class="btn ghost" data-act="backupCopy">बैकअप कॉपी करें</button></div>'+
     '<label class="lbl" for="backupBox" style="margin-top:12px">बैकअप वापस डालें</label><textarea id="backupBox" placeholder="यहाँ बैकअप का टेक्स्ट चिपकाएँ"></textarea><button class="btn ghost" style="margin-top:8px;width:100%" data-act="restore">वापस डालें</button></section>';
 }
 
-function renderHeader(){set('#shopName',S.shop);set('#dateLine',dmy(todayISO()))}
+function renderHeader(){set('#shopName',S.shop);set('#dateLine',dmy(todayISO())+(cloud.local?' · बिना लॉगिन, डेटा सिर्फ इसी फोन में':''))}
 function updateRow(row){
   var id=row.dataset.id,kg=num(ui.w[id]),r=num(row.querySelector('.rate').value);
   if(row.querySelector('.rate').value.trim()==='')r=(vegById(id)||{rate:0}).rate;
@@ -333,6 +338,7 @@ function updateTotals(){
   var bl=$('#balLine');if(bl&&c){var pb=balance(c);bl.innerHTML=pb>0?'पिछला बाकी: <b>'+fmt(pb)+'</b>':pb<0?'एडवांस जमा: '+fmt(-pb):'कोई बाकी नहीं'}
 }
 function render(){
+  $('#tabs').hidden=false;
   document.querySelectorAll('#tabs button').forEach(function(b){b.classList.toggle('on',b.dataset.tab===ui.tab)});
   var m=$('#main');
   if(ui.tab==='bill')m.innerHTML=ui.view==='preview'?billPreview():billEdit();
@@ -350,6 +356,8 @@ document.addEventListener('click',function(e){
   var t=e.target.closest('[data-tab],[data-act]');if(!t)return;
   if(t.dataset.tab){ui.tab=t.dataset.tab;render();window.scrollTo(0,0);return}
   var a=t.dataset.act,id=t.dataset.id,row=t.closest('.row');
+  if(a==='login'){doLogin();return}
+  if(a==='logout'){doLogout();return}
   if(a==='inc'||a==='dec'){
     var rid=row.dataset.id,cur=num(ui.w[rid]),nx=Math.max(0,cur+(a==='inc'?1:-1));
     ui.w[rid]=nx>0?String(nx):'';row.querySelector('.kg').value=ui.w[rid];updateRow(row);updateTotals();
@@ -376,7 +384,7 @@ document.addEventListener('click',function(e){
     var tt=calc();if(!tt.items.length){toast('पहले सब्ज़ी का वज़न डालें');return}
     var cc=cust();
     var b={id:uid(),ts:Date.now(),date:todayISO(),custId:cc.id,custName:cc.name,items:tt.items,sub:tt.sub,baki:tt.baki,minus:0,total:tt.total,prev:tt.baki,paid:tt.paid,due:tt.due};
-    S.bills.push(b);save();ui.w={};ui.sel=[];ui.picking=false;ui.baki='';ui.bakiTouched=false;ui.paid='';ui.view='preview';ui.previewId=b.id;render();window.scrollTo(0,0);toast('बिल सेव हो गया');
+    S.bills.push(b);save();cloudPutBill(b);ui.w={};ui.sel=[];ui.picking=false;ui.baki='';ui.bakiTouched=false;ui.paid='';ui.view='preview';ui.previewId=b.id;render();window.scrollTo(0,0);toast('बिल सेव हो गया');
   }else if(a==='newBill'){ui.view='edit';ui.baki='';ui.bakiTouched=false;ui.paid='';render();window.scrollTo(0,0)}
   else if(a==='viewBill'){ui.tab='bill';ui.view='preview';ui.previewId=id;render();window.scrollTo(0,0)}
   else if(a==='copyBill'){var bb=S.bills.find(function(x){return x.id===id});if(bb)copyText(billMsg(bb))}
@@ -394,7 +402,7 @@ document.addEventListener('click',function(e){
   else if(a==='clearBal'){
     var cb=S.customers.find(function(c){return c.id===id});if(!cb)return;
     var bal=balance(cb);if(bal<=0){toast('कोई बाकी नहीं है');return}
-    askDel(t,function(){S.payments.push({id:uid(),custId:id,date:todayISO(),amt:bal});save();render();toast(cb.name+' का हिसाब साफ')},'पक्का साफ करें?');
+    askDel(t,function(){var pc={id:uid(),custId:id,date:todayISO(),amt:bal};S.payments.push(pc);save();cloudPutPay(pc);render();toast(cb.name+' का हिसाब साफ')},'पक्का साफ करें?');
   }
   else if(a==='restoreList'){
     var txt=($('#listBox')||{}).value||'',n=0;
@@ -410,11 +418,11 @@ document.addEventListener('click',function(e){
   else if(a==='resetCustRate'){var cu=S.customers.find(function(c){return c.id===id});if(cu){delete cu.rates[t.dataset.v];save();render()}}
   else if(a==='pay'){
     var amt=num(($('#pay-'+id)||{}).value);if(amt<=0){toast('रकम लिखें');return}
-    S.payments.push({id:uid(),custId:id,date:todayISO(),amt:amt});save();render();toast('जमा हो गया');
-  }else if(a==='delBill'){askDel(t,function(){S.bills=S.bills.filter(function(b){return b.id!==id});save();render()})}
+    var po={id:uid(),custId:id,date:todayISO(),amt:amt};S.payments.push(po);save();cloudPutPay(po);render();toast('जमा हो गया');
+  }else if(a==='delBill'){askDel(t,function(){S.bills=S.bills.filter(function(b){return b.id!==id});save();cloudDelBill(id);render()})}
   else if(a==='backupCopy'){copyText(JSON.stringify(S))}
   else if(a==='restore'){
-    try{var o=JSON.parse($('#backupBox').value);if(!o||!Array.isArray(o.veg)||!Array.isArray(o.customers)||!Array.isArray(o.bills))throw 0;o.payments=o.payments||[];S=o;save();ui.custId=null;ui.w={};render();toast('बैकअप वापस आ गया')}
+    try{var o=JSON.parse($('#backupBox').value);if(!o||!Array.isArray(o.veg)||!Array.isArray(o.customers)||!Array.isArray(o.bills))throw 0;o.payments=o.payments||[];S=o;save();cloudReplaceAll();ui.custId=null;ui.w={};render();toast('बैकअप वापस आ गया')}
     catch(err){toast('बैकअप सही नहीं है')}
   }
 });
@@ -443,6 +451,99 @@ document.addEventListener('change',function(e){
   if(t.classList.contains('cname')){var c=S.customers.find(function(x){return x.id===id});if(c&&t.value.trim()){c.name=t.value.trim();save()}return}
   if(t.classList.contains('cphone')){var c2=S.customers.find(function(x){return x.id===id});if(c2){c2.phone=t.value.trim();save()}return}
 });
-render();
+/* ---------- online login + cloud save ---------- */
+var FB_CONFIG={apiKey:"AIzaSyDC9HS4IieDPbs12coaU_xJDk4GSJywEUM",authDomain:"sabzi-hisab.firebaseapp.com",projectId:"sabzi-hisab",storageBucket:"sabzi-hisab.firebasestorage.app",messagingSenderId:"1092632994221",appId:"1:1092632994221:web:146b5cdd185bfa32918124"};
+var auth=null,db=null,coreT=null;
+var clean=function(o){return JSON.parse(JSON.stringify(o))};
+function cloudErr(){toast('ऑनलाइन सेव नहीं हुआ। इंटरनेट देखें।')}
+function cloudSaveNow(){
+  clearTimeout(coreT);coreT=null;
+  if(!cloud.on||!cloud.ref)return Promise.resolve();
+  var p=cloud.ref.collection('store').doc('core').set(clean({shop:S.shop,veg:S.veg,customers:S.customers,vegMerged:true,updated:Date.now()}));
+  p.catch(cloudErr);return p;
+}
+function cloudSaveCore(){clearTimeout(coreT);coreT=setTimeout(cloudSaveNow,500)}
+function cloudPut(col,o){if(cloud.on)cloud.ref.collection(col).doc(o.id).set(clean(o)).catch(cloudErr)}
+function cloudPutBill(b){cloudPut('bills',b)}
+function cloudPutPay(p){cloudPut('payments',p)}
+function cloudDelBill(id){if(cloud.on)cloud.ref.collection('bills').doc(id).delete().catch(cloudErr)}
+function cloudReplaceAll(){
+  if(!cloud.on)return;
+  cloudSaveNow();
+  ['bills','payments'].forEach(function(col){
+    var arr=S[col],keep={};arr.forEach(function(x){keep[x.id]=1});
+    cloud.ref.collection(col).get().then(function(q){q.docs.forEach(function(d){if(!keep[d.id])d.ref.delete()})}).catch(cloudErr);
+    arr.forEach(function(x){cloudPut(col,x)});
+  });
+}
+function acct(){
+  return cloud.on?'<p class="small" style="margin:0 0 8px">लॉगिन: '+esc(cloud.email)+' · डेटा ऑनलाइन सेव है</p><button class="btn ghost" style="width:100%;margin-bottom:14px" data-act="logout">लॉग आउट</button>':'';
+}
+function showOnly(html){$('#tabs').hidden=true;$('#totbar').hidden=true;$('#main').innerHTML=html;renderHeader()}
+function loginScreen(msg){
+  showOnly('<section class="card login"><h2 style="margin-top:0">लॉगिन करें</h2><p class="small">अपने Gmail से लॉगिन करें। ग्राहक और हिसाब का डेटा ऑनलाइन सेव रहेगा, फोन या कंप्यूटर बदलने पर भी वापस मिलेगा।</p><button class="btn big" data-act="login">Google से लॉगिन करें</button>'+(msg?'<p class="bal"><b>'+esc(msg)+'</b></p>':'')+'</section>');
+}
+function doLogin(){
+  if(!auth)return;
+  var prov=new firebase.auth.GoogleAuthProvider();
+  auth.signInWithPopup(prov).catch(function(e){
+    var c=(e&&e.code)||'';
+    if(c==='auth/popup-blocked'||c==='auth/operation-not-supported-in-this-environment'){auth.signInWithRedirect(prov);return}
+    if(c==='auth/popup-closed-by-user'||c==='auth/cancelled-popup-request')return;
+    loginScreen(c==='auth/unauthorized-domain'?'Firebase में इस वेबसाइट का पता (domain) जोड़ना बाकी है।':'लॉगिन नहीं हुआ। फिर कोशिश करें। ('+c+')');
+  });
+}
+function doLogout(){cloudSaveNow();if(auth)auth.signOut()}
+function loadCloud(){
+  var c=cloud.ref.collection('store').doc('core');
+  return Promise.all([c.get(),cloud.ref.collection('bills').get(),cloud.ref.collection('payments').get()]).then(function(r){
+    var cs=r[0];
+    if(cs.exists){
+      var d=cs.data();
+      S={shop:d.shop||'पांडे जी सब्ज़ी',vegMerged:true,veg:d.veg||[],customers:d.customers||[],
+        bills:r[1].docs.map(function(x){return x.data()}),payments:r[2].docs.map(function(x){return x.data()})};
+      cloud.on=true;return;
+    }
+    var loc=null,migrated=false;
+    try{migrated=!!localStorage.getItem('sabzi_migrated')}catch(e){}
+    if(!migrated)loc=load();
+    var real=!!loc&&(loc.bills.length>0||loc.customers.some(function(x){return x.name.indexOf('(उदाहरण)')<0}));
+    if(real){
+      loc.customers=loc.customers.filter(function(x){return x.name.indexOf('(उदाहरण)')<0||loc.bills.some(function(b){return b.custId===x.id})});
+      S=loc;
+    }else S=seed();
+    cloud.on=true;
+    var done=cloudSaveNow();
+    S.bills.forEach(function(b){cloudPutBill(b)});S.payments.forEach(function(p){cloudPutPay(p)});
+    if(real){
+      done.then(function(){try{localStorage.setItem('sabzi_migrated','1')}catch(e){}}).catch(function(){});
+      toast('पुराना डेटा ऑनलाइन सेव हो गया');
+    }
+  });
+}
+document.addEventListener('visibilitychange',function(){if(document.hidden&&coreT)cloudSaveNow()});
+
+var fbOk=false;
+try{
+  if(window.firebase&&firebase.initializeApp){
+    if(!firebase.apps||!firebase.apps.length)firebase.initializeApp(FB_CONFIG);
+    auth=firebase.auth();db=firebase.firestore();
+    try{db.enablePersistence({synchronizeTabs:true}).catch(function(){})}catch(e){}
+    fbOk=true;
+  }
+}catch(e){fbOk=false}
+if(fbOk){
+  showOnly('<div class="empty">लोड हो रहा है…</div>');
+  auth.onAuthStateChanged(function(u){
+    if(!u){
+      cloud.on=false;cloud.ref=null;cloud.email='';cloud.uid=null;
+      S=seed();ui.tab='bill';ui.view='edit';ui.custId=null;ui.w={};ui.sel=[];ui.picking=false;ui.baki='';ui.bakiTouched=false;ui.paid='';ui.previewId=null;
+      loginScreen();return;
+    }
+    cloud.uid=u.uid;cloud.email=u.email||'';cloud.ref=db.collection('users').doc(u.uid);
+    showOnly('<div class="empty">डेटा लोड हो रहा है…</div>');
+    loadCloud().then(function(){render()}).catch(function(){cloud.on=false;loginScreen('डेटा लोड नहीं हुआ। इंटरनेट देखकर फिर कोशिश करें।')});
+  });
+}else{cloud.local=true;render()}
 })();
 </script>
