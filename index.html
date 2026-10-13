@@ -24,7 +24,7 @@
 body{background:var(--bg);color:var(--ink);font-family:var(--font-body);font-size:16px;line-height:1.4;padding-inline:16px;padding-block:0}
 .wrap{max-width:560px;margin:0 auto;padding-bottom:150px}
 .hd{padding-block:18px 10px}
-.hd h1{font-family:var(--font-display);font-weight:400;font-size:26px;margin:0;color:var(--accent);text-wrap:balance}
+.hd h1{font-family:var(--font-body);font-weight:800;font-size:27px;margin:0;color:var(--accent);text-wrap:balance}
 .hd p{margin:2px 0 0;color:var(--muted);font-size:14px}
 h2{font-size:20px;margin:18px 0 10px;font-weight:800}
 h3{font-size:17px;margin:0 0 10px;font-weight:800}
@@ -129,7 +129,7 @@ table.stk thead td{color:var(--muted);font-weight:800;border-bottom:2px solid va
   <main id="main"></main>
 </div>
 <div class="totbar" id="totbar" hidden>
-  <div><div style="display:block"><span>इस बिल का कुल</span><b id="stTotal">₹0</b></div><button class="btn" data-act="toSummary">बिल बनाएँ</button></div>
+  <div><div style="display:block"><span id="totLbl">इस बिल का कुल</span><b id="stTotal">₹0</b></div><button class="btn" id="totBtn" data-act="toSummary">बिल बनाएँ</button></div>
 </div>
 <nav class="tabs" id="tabs"><div>
   <button data-tab="bill" class="on">बिल</button>
@@ -191,7 +191,7 @@ var cloud={on:false,local:false,uid:null,email:'',ref:null};
 var S=load();
 save();
 try{if(navigator.storage&&navigator.storage.persist)navigator.storage.persist()}catch(e){}
-var ui={pdate:todayISO(),tab:'bill',view:'edit',custId:null,w:{},sel:[],picking:false,baki:'',paid:'',previewId:null,bakiTouched:false};
+var ui={psel:[],pkg:{},prate:{},ppick:false,pdate:todayISO(),tab:'bill',view:'edit',custId:null,w:{},sel:[],picking:false,baki:'',paid:'',previewId:null,bakiTouched:false};
 
 function cust(){var c=S.customers.find(function(x){return x.id===ui.custId});if(!c){c=S.customers[0];ui.custId=c?c.id:null}return c}
 function vegById(id){return S.veg.find(function(v){return v.id===id})}
@@ -244,7 +244,7 @@ function billImage(b){
     var T=function(t,px,py,font,col,al){x.font=font;x.fillStyle=col;x.textAlign=al||'left';x.textBaseline='alphabetic';x.fillText(t,px,py)};
     var hl=function(y,w,col,dash){x.beginPath();x.setLineDash(dash||[]);x.lineWidth=w;x.strokeStyle=col;x.moveTo(pad,y);x.lineTo(W-pad,y);x.stroke();x.setLineDash([])};
     var y=pad+10;
-    T(S.shop,pad,y+14,'400 32px '+FD,ACC);
+    T(S.shop,pad,y+14,'800 32px '+F,ACC);
     y+=14+40;
     T(b.custName,pad,y,'800 24px '+F,INK);
     y+=26;
@@ -405,23 +405,45 @@ function hisaabTab(){
     '<label class="lbl" for="backupBox" style="margin-top:12px">बैकअप वापस डालें</label><textarea id="backupBox" placeholder="यहाँ बैकअप का टेक्स्ट चिपकाएँ"></textarea><button class="btn ghost" style="margin-top:8px;width:100%" data-act="restore">वापस डालें</button></section>';
 }
 
+function lastBuy(name){var l=null;S.purchases.forEach(function(x){if(x.name===name&&(!l||x.ts>l.ts))l=x});return l?l.rate:null}
+function syncBar(){
+  var showBar=ui.tab==='bill'&&ui.view==='edit'&&S.customers.length>0;
+  var showP=ui.tab==='purchase'&&ui.psel.length>0;
+  $('#totbar').hidden=!(showBar||showP);
+  set('#totLbl',showP?'माल का कुल':'इस बिल का कुल');
+  var tb=$('#totBtn');if(tb){tb.textContent=showP?'माल सेव करें':'बिल बनाएँ';tb.dataset.act=showP?'savePur':'toSummary'}
+  if(showBar)updateTotals();
+  if(showP)updatePTotals();
+}
+function pRowHTML(v){
+  var kg=ui.pkg[v.id]||'',rt=ui.prate[v.id]==null?'':ui.prate[v.id],a=rnd(num(kg)*num(rt));
+  return '<div class="row pdraft'+(num(kg)>0?' on':'')+'" data-pid="'+v.id+'"><div class="top"><div class="nm"><span class="vn">'+esc(v.name)+'</span></div><div class="amt">'+(num(kg)>0?fmt(a):'')+'</div><button class="rm" data-act="prm" aria-label="'+esc(v.name)+' हटाएँ">×</button></div>'+
+    '<div class="ctrl"><label class="rt">₹<input class="prate" inputmode="decimal" value="'+esc(rt)+'" placeholder="रेट" aria-label="'+esc(v.name)+' का खरीद रेट"> /kg</label>'+
+    '<div class="step"><button data-act="pdec" aria-label="कम करें">−</button><input class="pkg" inputmode="decimal" value="'+esc(kg)+'" placeholder="0 kg" aria-label="'+esc(v.name)+' का वज़न"><button data-act="pinc" aria-label="बढ़ाएँ">+</button></div></div></div>';
+}
+function updatePRow(row){
+  var id=row.dataset.pid,kg=num(ui.pkg[id]),rt=num(ui.prate[id]);
+  row.querySelector('.amt').textContent=kg>0?fmt(rnd(kg*rt)):'';
+  row.classList.toggle('on',kg>0);
+}
+function updatePTotals(){
+  var t=0;ui.psel.forEach(function(id){t+=num(ui.pkg[id])*num(ui.prate[id])});
+  set('#stTotal',fmt(rnd(t)));
+}
 function purchaseTab(){
   var d=ui.pdate,items=S.purchases.filter(function(p){return p.date===d}).sort(function(a,b){return a.ts-b.ts});
-  var cost=0,sales=0,sold={},bought={},names=[];
-  items.forEach(function(p){cost+=p.amt;if(!(p.name in bought)){bought[p.name]=0;names.push(p.name)}bought[p.name]+=p.kg});
-  S.bills.forEach(function(b){if(b.date===d){sales+=billVeg(b);b.items.forEach(function(i){sold[i.name]=(sold[i.name]||0)+i.kg;if(names.indexOf(i.name)<0)names.push(i.name)})}});
-  cost=rnd(cost);sales=rnd(sales);var diff=rnd(sales-cost);
+  var total=rnd(items.reduce(function(s2,p){return s2+p.amt},0));
+  ui.psel=ui.psel.filter(function(id){return !!vegById(id)});
   var isToday=d===todayISO();
   return '<h2>'+(isToday?'आज का माल':'माल: '+dmy(d))+'</h2>'+
     '<section class="card"><label class="lbl" for="pdate">तारीख</label><input id="pdate" type="date" value="'+esc(d)+'"></section>'+
-    '<section class="card"><h3>माल जोड़ें</h3><label class="lbl" for="pName">सब्ज़ी का नाम</label><input id="pName" list="vegNames" autocomplete="off" placeholder="जैसे: आलू"><datalist id="vegNames">'+S.veg.map(function(v){return '<option value="'+esc(v.name)+'">'}).join('')+'</datalist>'+
-    '<div class="grid2" style="grid-template-columns:1fr 1fr;margin-top:8px"><div><label class="lbl" for="pKg">वज़न (kg)</label><input id="pKg" inputmode="decimal" placeholder="0"></div><div><label class="lbl" for="pRate">खरीद रेट ₹/kg</label><input id="pRate" inputmode="decimal" placeholder="0"></div></div>'+
-    '<p class="bal" style="margin-top:8px">राशि: <b id="pAmt" style="color:var(--ink)">₹0</b></p>'+
-    '<button class="btn big" style="min-height:46px;font-size:16px;margin-top:6px" data-act="addPur">जोड़ें</button></section>'+
-    '<section class="card"><dl class="sum"><div><dt>माल का खर्च</dt><dd>'+fmt(cost)+'</dd></div><div><dt>इस दिन की बिक्री (बिल)</dt><dd>'+fmt(sales)+'</dd></div>'+
-    '<div class="due"><dt>अंदाज़ा फ़ायदा</dt><dd style="color:'+(diff>=0?'var(--accent)':'var(--due)')+'">'+(diff<0?'-':'')+fmt(Math.abs(diff))+'</dd></div></dl><p class="small" style="margin:8px 0 0">बिक्री में से माल का खर्च घटाया है। बचा हुआ माल इसमें नहीं गिना गया।</p></section>'+
-    '<h3 style="margin-top:6px">आया हुआ माल</h3><section class="card">'+(items.length?items.map(function(p){return '<div class="pr"><div class="pm"><b>'+esc(p.name)+'</b><small>'+fmtN(p.kg)+' kg × ₹'+fmtN(p.rate)+'</small></div><span class="pa">'+fmt(p.amt)+'</span><button class="link" data-act="delPur" data-id="'+p.id+'">हटाएँ</button></div>'}).join(''):'<div class="empty">इस दिन का कोई माल नहीं जोड़ा।</div>')+'</section>'+
-    (names.length?'<h3>कितना आया, कितना बिका</h3><section class="card"><table class="stk"><thead><tr><td>सब्ज़ी</td><td>आया</td><td>बिका</td><td>बचा</td></tr></thead><tbody>'+names.map(function(n){var a=bought[n]||0,o=sold[n]||0,r=rnd(a-o);return '<tr><td>'+esc(n)+'</td><td>'+fmtN(a)+' kg</td><td>'+fmtN(o)+' kg</td><td'+(r<0?' style="color:var(--due);font-weight:700"':'')+'>'+fmtN(r)+' kg</td></tr>'}).join('')+'</tbody></table></section>':'');
+    '<button class="btn pickbtn" data-act="ppickBtn">'+(ui.ppick?'सब्ज़ी की लिस्ट बंद करें':'+ सब्ज़ी चुनें')+'</button>'+
+    '<section class="card" id="ppicker"'+(ui.ppick?'':' hidden')+'><input id="pfilter" class="search" placeholder="सब्ज़ी खोजें" aria-label="सब्ज़ी खोजें" autocomplete="off" style="margin:0 0 10px"><div class="chips" id="pchips">'+
+      (S.veg.length?S.veg.map(function(v){return '<button class="chip'+(ui.psel.indexOf(v.id)>=0?' on':'')+'" data-act="ppick" data-id="'+v.id+'">'+esc(v.name)+'</button>'}).join(''):'<div class="empty">रेट वाले पेज पर सब्ज़ी जोड़ें।</div>')+'</div></section>'+
+    '<div id="prows" class="rows">'+ui.psel.map(function(id){return pRowHTML(vegById(id))}).join('')+'</div>'+
+    '<div class="empty" id="prowsEmpty"'+(ui.psel.length?' hidden':'')+'>ऊपर से सब्ज़ी चुनें, फिर खरीद रेट और वज़न डालें।</div>'+
+    '<h3 style="margin-top:16px">सेव किया हुआ माल</h3><section class="card"><div style="display:flex;justify-content:space-between;align-items:center;gap:12px;padding-bottom:6px;border-bottom:1px solid var(--line)"><b>माल का कुल</b><b style="font-size:22px;font-variant-numeric:tabular-nums">'+fmt(total)+'</b></div>'+
+    (items.length?items.map(function(p,i){return '<div class="pr"><div class="pm"><b>'+(i+1)+'. '+esc(p.name)+'</b><small>'+fmtN(p.kg)+' kg × ₹'+fmtN(p.rate)+'</small></div><span class="pa">'+fmt(p.amt)+'</span><button class="link" data-act="delPur" data-id="'+p.id+'">हटाएँ</button></div>'}).join(''):'<div class="empty">इस दिन का कोई माल सेव नहीं हुआ।</div>')+'</section>';
 }
 function renderHeader(){set('#shopName',S.shop);set('#dateLine',dmy(todayISO())+(cloud.local?' · बिना लॉगिन, डेटा सिर्फ इसी फोन में':''))}
 function updateRow(row){
@@ -445,9 +467,7 @@ function render(){
   else if(ui.tab==='cust')m.innerHTML=custTab();
   else if(ui.tab==='purchase')m.innerHTML=purchaseTab();
   else m.innerHTML=hisaabTab();
-  var showBar=ui.tab==='bill'&&ui.view==='edit'&&S.customers.length>0;
-  $('#totbar').hidden=!showBar;
-  if(showBar)updateTotals();
+  syncBar();
   renderHeader();
 }
 
@@ -517,12 +537,41 @@ document.addEventListener('click',function(e){
     });
     if(n){save();render();toast(n+' ग्राहक वापस आ गए')}else toast('सूची नहीं मिली या ग्राहक पहले से हैं');
   }
-  else if(a==='addPur'){
-    var pn=($('#pName').value||'').trim(),pk=num($('#pKg').value),pr=num($('#pRate').value);
-    if(!pn||pk<=0){toast('सब्ज़ी का नाम और वज़न लिखें');return}
-    var pv2=S.veg.find(function(v){return v.name===pn});
-    var po={id:uid(),ts:Date.now(),date:ui.pdate,name:pn,vegId:pv2?pv2.id:null,kg:pk,rate:pr,amt:rnd(pk*pr)};
-    S.purchases.push(po);if(!cloud.on)save();cloudPut('purchases',po);render();toast('माल जुड़ गया');
+  else if(a==='ppickBtn'){
+    ui.ppick=!ui.ppick;var pp1=$('#ppicker');if(pp1)pp1.hidden=!ui.ppick;
+    t.textContent=ui.ppick?'सब्ज़ी की लिस्ट बंद करें':'+ सब्ज़ी चुनें';
+  }
+  else if(a==='ppick'){
+    var pv1=vegById(id);if(!pv1)return;
+    if(ui.psel.indexOf(id)>=0){toast(pv1.name+' पहले से जुड़ी है');return}
+    ui.psel.push(id);t.classList.add('on');
+    var lb1=lastBuy(pv1.name);ui.prate[id]=lb1!=null?String(lb1):'';
+    $('#prows').insertAdjacentHTML('beforeend',pRowHTML(pv1));
+    var pe1=$('#prowsEmpty');if(pe1)pe1.hidden=true;
+    syncBar();toast(pv1.name+' जुड़ गई');
+  }
+  else if(a==='prm'){
+    var prow=t.closest('.pdraft'),pid=prow.dataset.pid;
+    ui.psel=ui.psel.filter(function(x){return x!==pid});delete ui.pkg[pid];delete ui.prate[pid];prow.remove();
+    var pch=document.querySelector('#pchips .chip[data-id="'+pid+'"]');if(pch)pch.classList.remove('on');
+    var pe2=$('#prowsEmpty');if(pe2)pe2.hidden=ui.psel.length>0;
+    syncBar();
+  }
+  else if(a==='pinc'||a==='pdec'){
+    var pr3=t.closest('.pdraft'),pid2=pr3.dataset.pid,pcur=num(ui.pkg[pid2]),pnx=Math.max(0,pcur+(a==='pinc'?1:-1));
+    ui.pkg[pid2]=pnx>0?String(pnx):'';pr3.querySelector('.pkg').value=ui.pkg[pid2];updatePRow(pr3);updatePTotals();
+  }
+  else if(a==='savePur'){
+    var pcnt=0;
+    ui.psel.forEach(function(vid){
+      var v=vegById(vid);if(!v)return;
+      var kg=num(ui.pkg[vid]),rt=num(ui.prate[vid]);if(kg<=0)return;
+      var po={id:uid(),ts:Date.now()+pcnt,date:ui.pdate,name:v.name,vegId:v.id,kg:kg,rate:rt,amt:rnd(kg*rt)};
+      S.purchases.push(po);cloudPut('purchases',po);pcnt++;
+    });
+    if(!pcnt){toast('पहले सब्ज़ी का वज़न डालें');return}
+    if(!cloud.on)save();
+    ui.psel=[];ui.pkg={};ui.prate={};ui.ppick=false;render();window.scrollTo(0,0);toast('माल सेव हो गया');
   }
   else if(a==='delPur'){askDel(t,function(){S.purchases=S.purchases.filter(function(x){return x.id!==id});if(!cloud.on)save();if(cloud.on)cloud.ref.collection('purchases').doc(id).delete().catch(cloudErr);render()})}
   else if(a==='resetCustRate'){var cu=S.customers.find(function(c){return c.id===id});if(cu){delete cu.rates[t.dataset.v];save();render()}}
@@ -539,9 +588,15 @@ document.addEventListener('click',function(e){
 document.addEventListener('input',function(e){
   var t=e.target;
   if(t.id==='filter'){var q=t.value.trim();document.querySelectorAll('#chips .chip').forEach(function(r){r.hidden=!!q&&r.textContent.indexOf(q)<0});return}
-  if(t.id==='pKg'||t.id==='pRate'){set('#pAmt',fmt(rnd(num(($('#pKg')||{}).value)*num(($('#pRate')||{}).value))));return}
+  if(t.id==='pfilter'){var pq=t.value.trim();document.querySelectorAll('#pchips .chip').forEach(function(r){r.hidden=!!pq&&r.textContent.indexOf(pq)<0});return}
   if(t.id==='baki'){ui.bakiTouched=true;ui.baki=t.value;updateTotals();return}
   if(t.id==='paid'){ui.paid=t.value;updateTotals();return}
+  var pd=t.closest('.pdraft');
+  if(pd&&(t.classList.contains('pkg')||t.classList.contains('prate'))){
+    var pid3=pd.dataset.pid;
+    if(t.classList.contains('pkg'))ui.pkg[pid3]=t.value;else ui.prate[pid3]=t.value;
+    updatePRow(pd);updatePTotals();return;
+  }
   var row=t.closest('.row');if(!row)return;
   var id=row.dataset.id;
   if(t.classList.contains('kg')){ui.w[id]=t.value;updateRow(row);updateTotals()}
@@ -557,13 +612,6 @@ document.addEventListener('change',function(e){
   var t=e.target,id=t.dataset?t.dataset.id:null;
   if(t.id==='custSel'){ui.custId=t.value;ui.bakiTouched=false;ui.baki='';render();return}
   if(t.id==='pdate'){ui.pdate=t.value||todayISO();render();return}
-  if(t.id==='pName'){
-    var nm=t.value.trim(),last=null;
-    S.purchases.forEach(function(x){if(x.name===nm&&(!last||x.ts>last.ts))last=x});
-    var pr2=$('#pRate');if(last&&pr2&&!pr2.value)pr2.value=last.rate;
-    var kg2=$('#pKg');if(kg2)kg2.focus();
-    return;
-  }
   if(t.id==='shop'){S.shop=t.value.trim()||'पांडे जी सब्ज़ी';save();renderHeader();return}
   if(t.classList.contains('vname')){var v=vegById(id);if(v&&t.value.trim()){v.name=t.value.trim();save()}return}
   if(t.classList.contains('vrate')){var v2=vegById(id);if(v2){v2.rate=num(t.value);save()}return}
