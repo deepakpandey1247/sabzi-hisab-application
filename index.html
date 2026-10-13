@@ -78,7 +78,7 @@ input:focus-visible,select:focus-visible,textarea:focus-visible,button:focus-vis
 .totbar span{font-size:13px;opacity:.9}
 .totbar .btn{background:var(--on-accent);color:var(--accent)}
 .tabs{position:fixed;left:0;right:0;bottom:0;background:var(--surface);border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom,0px)}
-.tabs>div{max-width:560px;margin:0 auto;display:grid;grid-template-columns:repeat(4,1fr)}
+.tabs>div{max-width:560px;margin:0 auto;display:grid;grid-template-columns:repeat(5,1fr)}
 .tabs button{height:var(--tabh);border:0;background:none;font-weight:700;color:var(--muted);cursor:pointer;border-top:3px solid transparent}
 .tabs button.on{color:var(--accent);border-top-color:var(--accent)}
 .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(var(--tabh) + 84px + env(safe-area-inset-bottom,0px));background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:999px;font-weight:700;max-width:90vw}
@@ -112,6 +112,15 @@ table.bill td:last-child{text-align:right;font-weight:700;white-space:nowrap}
 .acts{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
 .acts>*{flex:1 1 140px}
 @media (prefers-reduced-motion:no-preference){.row,.btn{transition:background .15s,border-color .15s}}
+.pr{display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--line)}
+.pr:last-child{border-bottom:0}
+.pm{flex:1;min-width:0;display:flex;flex-direction:column}
+.pm b{overflow-wrap:anywhere}
+.pa{font-weight:800;font-variant-numeric:tabular-nums}
+table.stk{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}
+table.stk td{padding:6px 4px;border-bottom:1px solid var(--line)}
+table.stk td+td{text-align:right;white-space:nowrap}
+table.stk thead td{color:var(--muted);font-weight:800;border-bottom:2px solid var(--line)}
 .login{text-align:center;margin-top:30px}.login p{margin:8px 0 0}
 </style>
 
@@ -127,6 +136,7 @@ table.bill td:last-child{text-align:right;font-weight:700;white-space:nowrap}
   <button data-tab="rates">रेट</button>
   <button data-tab="cust">ग्राहक</button>
   <button data-tab="hisaab">हिसाब</button>
+  <button data-tab="purchase">माल</button>
 </div></nav>
 <div class="toast" id="toast" hidden></div>
 
@@ -173,15 +183,15 @@ function seed(){
   return {shop:'पांडे जी सब्ज़ी',vegMerged:true,
     veg:vegFromCatalog(),
     customers:[],
-    bills:[],payments:[]};
+    bills:[],payments:[],purchases:[]};
 }
-function load(){try{var r=localStorage.getItem(KEY);if(r){var o=JSON.parse(r);if(o&&o.veg&&o.customers&&o.bills){o.payments=o.payments||[];if(o.shop==='मेरी सब्ज़ी दुकान'||!o.shop)o.shop='पांडे जी सब्ज़ी';if(!o.vegMerged){o.veg=mergeVeg(o.veg);o.vegMerged=true}return o}}}catch(e){}return seed()}
+function load(){try{var r=localStorage.getItem(KEY);if(r){var o=JSON.parse(r);if(o&&o.veg&&o.customers&&o.bills){o.payments=o.payments||[];o.purchases=o.purchases||[];if(o.shop==='मेरी सब्ज़ी दुकान'||!o.shop)o.shop='पांडे जी सब्ज़ी';if(!o.vegMerged){o.veg=mergeVeg(o.veg);o.vegMerged=true}return o}}}catch(e){}return seed()}
 function save(){if(cloud.on){cloudSaveCore();return}try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}}
 var cloud={on:false,local:false,uid:null,email:'',ref:null};
 var S=load();
 save();
 try{if(navigator.storage&&navigator.storage.persist)navigator.storage.persist()}catch(e){}
-var ui={tab:'bill',view:'edit',custId:null,w:{},sel:[],picking:false,baki:'',paid:'',previewId:null,bakiTouched:false};
+var ui={pdate:todayISO(),tab:'bill',view:'edit',custId:null,w:{},sel:[],picking:false,baki:'',paid:'',previewId:null,bakiTouched:false};
 
 function cust(){var c=S.customers.find(function(x){return x.id===ui.custId});if(!c){c=S.customers[0];ui.custId=c?c.id:null}return c}
 function vegById(id){return S.veg.find(function(v){return v.id===id})}
@@ -395,6 +405,24 @@ function hisaabTab(){
     '<label class="lbl" for="backupBox" style="margin-top:12px">बैकअप वापस डालें</label><textarea id="backupBox" placeholder="यहाँ बैकअप का टेक्स्ट चिपकाएँ"></textarea><button class="btn ghost" style="margin-top:8px;width:100%" data-act="restore">वापस डालें</button></section>';
 }
 
+function purchaseTab(){
+  var d=ui.pdate,items=S.purchases.filter(function(p){return p.date===d}).sort(function(a,b){return a.ts-b.ts});
+  var cost=0,sales=0,sold={},bought={},names=[];
+  items.forEach(function(p){cost+=p.amt;if(!(p.name in bought)){bought[p.name]=0;names.push(p.name)}bought[p.name]+=p.kg});
+  S.bills.forEach(function(b){if(b.date===d){sales+=billVeg(b);b.items.forEach(function(i){sold[i.name]=(sold[i.name]||0)+i.kg;if(names.indexOf(i.name)<0)names.push(i.name)})}});
+  cost=rnd(cost);sales=rnd(sales);var diff=rnd(sales-cost);
+  var isToday=d===todayISO();
+  return '<h2>'+(isToday?'आज का माल':'माल: '+dmy(d))+'</h2>'+
+    '<section class="card"><label class="lbl" for="pdate">तारीख</label><input id="pdate" type="date" value="'+esc(d)+'"></section>'+
+    '<section class="card"><h3>माल जोड़ें</h3><label class="lbl" for="pName">सब्ज़ी का नाम</label><input id="pName" list="vegNames" autocomplete="off" placeholder="जैसे: आलू"><datalist id="vegNames">'+S.veg.map(function(v){return '<option value="'+esc(v.name)+'">'}).join('')+'</datalist>'+
+    '<div class="grid2" style="grid-template-columns:1fr 1fr;margin-top:8px"><div><label class="lbl" for="pKg">वज़न (kg)</label><input id="pKg" inputmode="decimal" placeholder="0"></div><div><label class="lbl" for="pRate">खरीद रेट ₹/kg</label><input id="pRate" inputmode="decimal" placeholder="0"></div></div>'+
+    '<p class="bal" style="margin-top:8px">राशि: <b id="pAmt" style="color:var(--ink)">₹0</b></p>'+
+    '<button class="btn big" style="min-height:46px;font-size:16px;margin-top:6px" data-act="addPur">जोड़ें</button></section>'+
+    '<section class="card"><dl class="sum"><div><dt>माल का खर्च</dt><dd>'+fmt(cost)+'</dd></div><div><dt>इस दिन की बिक्री (बिल)</dt><dd>'+fmt(sales)+'</dd></div>'+
+    '<div class="due"><dt>अंदाज़ा फ़ायदा</dt><dd style="color:'+(diff>=0?'var(--accent)':'var(--due)')+'">'+(diff<0?'-':'')+fmt(Math.abs(diff))+'</dd></div></dl><p class="small" style="margin:8px 0 0">बिक्री में से माल का खर्च घटाया है। बचा हुआ माल इसमें नहीं गिना गया।</p></section>'+
+    '<h3 style="margin-top:6px">आया हुआ माल</h3><section class="card">'+(items.length?items.map(function(p){return '<div class="pr"><div class="pm"><b>'+esc(p.name)+'</b><small>'+fmtN(p.kg)+' kg × ₹'+fmtN(p.rate)+'</small></div><span class="pa">'+fmt(p.amt)+'</span><button class="link" data-act="delPur" data-id="'+p.id+'">हटाएँ</button></div>'}).join(''):'<div class="empty">इस दिन का कोई माल नहीं जोड़ा।</div>')+'</section>'+
+    (names.length?'<h3>कितना आया, कितना बिका</h3><section class="card"><table class="stk"><thead><tr><td>सब्ज़ी</td><td>आया</td><td>बिका</td><td>बचा</td></tr></thead><tbody>'+names.map(function(n){var a=bought[n]||0,o=sold[n]||0,r=rnd(a-o);return '<tr><td>'+esc(n)+'</td><td>'+fmtN(a)+' kg</td><td>'+fmtN(o)+' kg</td><td'+(r<0?' style="color:var(--due);font-weight:700"':'')+'>'+fmtN(r)+' kg</td></tr>'}).join('')+'</tbody></table></section>':'');
+}
 function renderHeader(){set('#shopName',S.shop);set('#dateLine',dmy(todayISO())+(cloud.local?' · बिना लॉगिन, डेटा सिर्फ इसी फोन में':''))}
 function updateRow(row){
   var id=row.dataset.id,kg=num(ui.w[id]),r=num(row.querySelector('.rate').value);
@@ -415,6 +443,7 @@ function render(){
   if(ui.tab==='bill')m.innerHTML=ui.view==='preview'?billPreview():billEdit();
   else if(ui.tab==='rates')m.innerHTML=ratesTab();
   else if(ui.tab==='cust')m.innerHTML=custTab();
+  else if(ui.tab==='purchase')m.innerHTML=purchaseTab();
   else m.innerHTML=hisaabTab();
   var showBar=ui.tab==='bill'&&ui.view==='edit'&&S.customers.length>0;
   $('#totbar').hidden=!showBar;
@@ -488,6 +517,14 @@ document.addEventListener('click',function(e){
     });
     if(n){save();render();toast(n+' ग्राहक वापस आ गए')}else toast('सूची नहीं मिली या ग्राहक पहले से हैं');
   }
+  else if(a==='addPur'){
+    var pn=($('#pName').value||'').trim(),pk=num($('#pKg').value),pr=num($('#pRate').value);
+    if(!pn||pk<=0){toast('सब्ज़ी का नाम और वज़न लिखें');return}
+    var pv2=S.veg.find(function(v){return v.name===pn});
+    var po={id:uid(),ts:Date.now(),date:ui.pdate,name:pn,vegId:pv2?pv2.id:null,kg:pk,rate:pr,amt:rnd(pk*pr)};
+    S.purchases.push(po);if(!cloud.on)save();cloudPut('purchases',po);render();toast('माल जुड़ गया');
+  }
+  else if(a==='delPur'){askDel(t,function(){S.purchases=S.purchases.filter(function(x){return x.id!==id});if(!cloud.on)save();if(cloud.on)cloud.ref.collection('purchases').doc(id).delete().catch(cloudErr);render()})}
   else if(a==='resetCustRate'){var cu=S.customers.find(function(c){return c.id===id});if(cu){delete cu.rates[t.dataset.v];save();render()}}
   else if(a==='pay'){
     var amt=num(($('#pay-'+id)||{}).value);if(amt<=0){toast('रकम लिखें');return}
@@ -495,13 +532,14 @@ document.addEventListener('click',function(e){
   }else if(a==='delBill'){askDel(t,function(){S.bills=S.bills.filter(function(b){return b.id!==id});save();cloudDelBill(id);render()})}
   else if(a==='backupCopy'){copyText(JSON.stringify(S))}
   else if(a==='restore'){
-    try{var o=JSON.parse($('#backupBox').value);if(!o||!Array.isArray(o.veg)||!Array.isArray(o.customers)||!Array.isArray(o.bills))throw 0;o.payments=o.payments||[];S=o;save();cloudReplaceAll();ui.custId=null;ui.w={};render();toast('बैकअप वापस आ गया')}
+    try{var o=JSON.parse($('#backupBox').value);if(!o||!Array.isArray(o.veg)||!Array.isArray(o.customers)||!Array.isArray(o.bills))throw 0;o.payments=o.payments||[];o.purchases=o.purchases||[];S=o;save();cloudReplaceAll();ui.custId=null;ui.w={};render();toast('बैकअप वापस आ गया')}
     catch(err){toast('बैकअप सही नहीं है')}
   }
 });
 document.addEventListener('input',function(e){
   var t=e.target;
   if(t.id==='filter'){var q=t.value.trim();document.querySelectorAll('#chips .chip').forEach(function(r){r.hidden=!!q&&r.textContent.indexOf(q)<0});return}
+  if(t.id==='pKg'||t.id==='pRate'){set('#pAmt',fmt(rnd(num(($('#pKg')||{}).value)*num(($('#pRate')||{}).value))));return}
   if(t.id==='baki'){ui.bakiTouched=true;ui.baki=t.value;updateTotals();return}
   if(t.id==='paid'){ui.paid=t.value;updateTotals();return}
   var row=t.closest('.row');if(!row)return;
@@ -518,6 +556,14 @@ document.addEventListener('input',function(e){
 document.addEventListener('change',function(e){
   var t=e.target,id=t.dataset?t.dataset.id:null;
   if(t.id==='custSel'){ui.custId=t.value;ui.bakiTouched=false;ui.baki='';render();return}
+  if(t.id==='pdate'){ui.pdate=t.value||todayISO();render();return}
+  if(t.id==='pName'){
+    var nm=t.value.trim(),last=null;
+    S.purchases.forEach(function(x){if(x.name===nm&&(!last||x.ts>last.ts))last=x});
+    var pr2=$('#pRate');if(last&&pr2&&!pr2.value)pr2.value=last.rate;
+    var kg2=$('#pKg');if(kg2)kg2.focus();
+    return;
+  }
   if(t.id==='shop'){S.shop=t.value.trim()||'पांडे जी सब्ज़ी';save();renderHeader();return}
   if(t.classList.contains('vname')){var v=vegById(id);if(v&&t.value.trim()){v.name=t.value.trim();save()}return}
   if(t.classList.contains('vrate')){var v2=vegById(id);if(v2){v2.rate=num(t.value);save()}return}
@@ -543,7 +589,7 @@ function cloudDelBill(id){if(cloud.on)cloud.ref.collection('bills').doc(id).dele
 function cloudReplaceAll(){
   if(!cloud.on)return;
   cloudSaveNow();
-  ['bills','payments'].forEach(function(col){
+  ['bills','payments','purchases'].forEach(function(col){
     var arr=S[col],keep={};arr.forEach(function(x){keep[x.id]=1});
     cloud.ref.collection(col).get().then(function(q){q.docs.forEach(function(d){if(!keep[d.id])d.ref.delete()})}).catch(cloudErr);
     arr.forEach(function(x){cloudPut(col,x)});
@@ -569,12 +615,12 @@ function doLogin(){
 function doLogout(){cloudSaveNow();if(auth)auth.signOut()}
 function loadCloud(){
   var c=cloud.ref.collection('store').doc('core');
-  return Promise.all([c.get(),cloud.ref.collection('bills').get(),cloud.ref.collection('payments').get()]).then(function(r){
+  return Promise.all([c.get(),cloud.ref.collection('bills').get(),cloud.ref.collection('payments').get(),cloud.ref.collection('purchases').get()]).then(function(r){
     var cs=r[0];
     if(cs.exists){
       var d=cs.data();
       S={shop:d.shop||'पांडे जी सब्ज़ी',vegMerged:true,veg:d.veg||[],customers:d.customers||[],
-        bills:r[1].docs.map(function(x){return x.data()}),payments:r[2].docs.map(function(x){return x.data()})};
+        bills:r[1].docs.map(function(x){return x.data()}),payments:r[2].docs.map(function(x){return x.data()}),purchases:r[3].docs.map(function(x){return x.data()})};
       cloud.on=true;return;
     }
     var loc=null,migrated=false;
@@ -587,7 +633,7 @@ function loadCloud(){
     }else S=seed();
     cloud.on=true;
     var done=cloudSaveNow();
-    S.bills.forEach(function(b){cloudPutBill(b)});S.payments.forEach(function(p){cloudPutPay(p)});
+    S.bills.forEach(function(b){cloudPutBill(b)});S.payments.forEach(function(p){cloudPutPay(p)});(S.purchases||[]).forEach(function(p){cloudPut('purchases',p)});
     if(real){
       done.then(function(){try{localStorage.setItem('sabzi_migrated','1')}catch(e){}}).catch(function(){});
       toast('पुराना डेटा ऑनलाइन सेव हो गया');
