@@ -204,24 +204,90 @@ function calc(){
 function phoneNorm(p){var d=String(p||'').replace(/\D/g,'');if(d.length===10)return '91'+d;if(d.length>=11)return d;return ''}
 function waLink(phone,text){return 'https://wa.me/'+phoneNorm(phone)+'?text='+encodeURIComponent(text)}
 function billMsg(b){
-  var padL=function(x,n){x=String(x);while(x.length<n)x=' '+x;return x};
-  var padR=function(x,n){x=String(x);while(x.length<n)x=x+' ';return x};
-  var rows=b.items.map(function(i,idx){return {i:String(idx+1),r:fmtN(i.rate),k:fmtN(i.kg)+' kg',a:fmtN(i.amt),n:i.name}});
-  var wi=2,wr=4,wk=5,wa=5;
-  rows.forEach(function(x){wi=Math.max(wi,x.i.length);wr=Math.max(wr,x.r.length);wk=Math.max(wk,x.k.length);wa=Math.max(wa,x.a.length)});
-  var head=padR('क्र',wi)+' | '+padL('रेट',wr)+' | '+padL('वज़न',wk)+' | '+padL('राशि',wa)+' | सब्ज़ी';
-  var line=new Array(wi+wr+wk+wa+9).join('-')+'------';
-  var tbl=rows.map(function(x){return padR(x.i,wi)+' | '+padL(x.r,wr)+' | '+padL(x.k,wk)+' | '+padL(x.a,wa)+' | '+x.n});
-  var L=['*'+S.shop+'*','ग्राहक: *'+b.custName+'*','तारीख: '+dmy(b.date),'','```',head,line].concat(tbl).concat([line,'```','']);
-  L.push('सब्ज़ी का कुल: ₹'+fmtN(b.sub));
-  if(b.baki)L.push('बाकी: ₹'+fmtN(b.baki));
-  else if(b.prev)L.push('पिछला बाकी: ₹'+fmtN(b.prev));
+  var L=['*'+S.shop+'*','ग्राहक: '+b.custName,'तारीख: '+dmy(b.date),''];
+  b.items.forEach(function(i,idx){L.push((idx+1)+'. '+i.name+' - '+fmtN(i.kg)+' kg × ₹'+fmtN(i.rate)+' = ₹'+fmtN(i.amt))});
+  L.push('');L.push('सब्ज़ी का कुल: ₹'+fmtN(b.sub));
+  if(b.baki)L.push('बाकी: ₹'+fmtN(b.baki));else if(b.prev)L.push('पिछला बाकी: ₹'+fmtN(b.prev));
   if(b.minus)L.push('घटाया: -₹'+fmtN(b.minus));
   L.push('*इस बिल का कुल: ₹'+fmtN(b.total)+'*');
   if(b.paid)L.push('अभी मिले: ₹'+fmtN(b.paid));
-  L.push('*कुल बाकी: ₹'+fmtN(b.due)+'*');
-  L.push('');L.push('धन्यवाद');
+  L.push('*कुल बाकी: ₹'+fmtN(b.due)+'*');L.push('');L.push('धन्यवाद');
   return L.join('\n');
+}
+/* bill as a picture, drawn like the on-screen bill */
+function billImage(b){
+  var fonts=(document.fonts&&document.fonts.load)?Promise.race([Promise.all([document.fonts.load('500 20px Mukta'),document.fonts.load('800 20px Mukta'),document.fonts.load('400 30px "Yatra One"')]),new Promise(function(r){setTimeout(r,1500)})]).catch(function(){}):Promise.resolve();
+  return fonts.then(function(){
+    var W=720,pad=28,rowH=42,K=2,items=b.items,bakiAmt=b.baki!=null?num(b.baki):0;
+    var lines=[['सब्ज़ी का कुल',fmt(b.sub),0]];
+    if(bakiAmt)lines.push(['बाकी',fmt(bakiAmt),0]);
+    if(b.minus)lines.push(['घटाया','-'+fmt(b.minus),0]);
+    if(b.baki==null&&b.prev)lines.push(['पिछला बाकी',fmt(b.prev),0]);
+    lines.push(['इस बिल का कुल',fmt(b.total),1]);
+    if(b.paid)lines.push(['अभी मिले',fmt(b.paid),0]);
+    var H=40+44+30+24+16+rowH+items.length*rowH+18+lines.length*34+26+64+46;
+    var cv=document.createElement('canvas');cv.width=W*K;cv.height=H*K;
+    var x=cv.getContext('2d');x.scale(K,K);
+    var BG='#ffffff',INK='#1b2a1e',MUT='#5d6f60',LINE='#d8e2d2',ACC='#2e7d3a',DUE='#c0392b';
+    var F="'Mukta','Noto Sans Devanagari','Nirmala UI',sans-serif",FD="'Yatra One','Mukta','Noto Sans Devanagari',serif";
+    x.fillStyle=BG;x.fillRect(0,0,W,H);
+    var T=function(t,px,py,font,col,al){x.font=font;x.fillStyle=col;x.textAlign=al||'left';x.textBaseline='alphabetic';x.fillText(t,px,py)};
+    var hl=function(y,w,col,dash){x.beginPath();x.setLineDash(dash||[]);x.lineWidth=w;x.strokeStyle=col;x.moveTo(pad,y);x.lineTo(W-pad,y);x.stroke();x.setLineDash([])};
+    var y=pad+10;
+    T(S.shop,pad,y+14,'400 32px '+FD,ACC);
+    y+=14+40;
+    T(b.custName,pad,y,'800 24px '+F,INK);
+    y+=26;
+    T(dmy(b.date),pad,y,'500 16px '+F,MUT);
+    y+=22;
+    var cNo=pad+4,cName=pad+54,rRate=W-pad-232,rKg=W-pad-118,rAmt=W-pad-4;
+    T('क्र.',cNo,y+28,'800 17px '+F,MUT);T('सब्ज़ी',cName,y+28,'800 17px '+F,MUT);
+    T('रेट',rRate,y+28,'800 17px '+F,MUT,'right');T('वज़न',rKg,y+28,'800 17px '+F,MUT,'right');T('राशि',rAmt,y+28,'800 17px '+F,MUT,'right');
+    y+=rowH;hl(y,2,LINE);
+    items.forEach(function(i,idx){
+      var base=y+28;
+      T(String(idx+1),cNo,base,'700 18px '+F,MUT);
+      var fs=21;x.font='500 '+fs+'px '+F;while(x.measureText(i.name).width>(rRate-80-cName)&&fs>12){fs--;x.font='500 '+fs+'px '+F}
+      T(i.name,cName,base,'500 '+fs+'px '+F,INK);
+      T('₹'+fmtN(i.rate),rRate,base,'500 20px '+F,INK,'right');
+      T(fmtN(i.kg)+' kg',rKg,base,'500 20px '+F,INK,'right');
+      T('₹'+fmtN(i.amt),rAmt,base,'800 20px '+F,INK,'right');
+      y+=rowH;hl(y,1,LINE);
+    });
+    y+=18;
+    lines.forEach(function(l){
+      y+=34;
+      T(l[0],pad+4,y-8,(l[2]?'800 21px ':'500 20px ')+F,l[2]?INK:MUT);
+      T(l[1],rAmt,y-8,'800 21px '+F,INK,'right');
+    });
+    y+=10;hl(y,1.5,LINE,[5,4]);
+    y+=44;
+    T('कुल बाकी',pad+4,y,'800 24px '+F,INK);
+    T(fmt(b.due),rAmt,y+4,'400 38px '+FD,DUE,'right');
+    y+=48;
+    T('धन्यवाद',W/2,y,'500 17px '+F,MUT,'center');
+    return new Promise(function(res,rej){cv.toBlob(function(bl){bl?res(bl):rej(new Error('img'))},'image/png')});
+  });
+}
+function imgFallback(blob,name){
+  var done=function(){toast('फोटो डाउनलोड हो गई। WhatsApp में जाकर भेजें')};
+  var dl=function(){var u=URL.createObjectURL(blob),a=document.createElement('a');a.href=u;a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(function(){URL.revokeObjectURL(u)},4000);done()};
+  try{
+    if(navigator.clipboard&&window.ClipboardItem){
+      navigator.clipboard.write([new ClipboardItem({'image/png':blob})]).then(function(){toast('फोटो कॉपी हो गई। WhatsApp में Ctrl+V से चिपकाएँ')},dl);
+    }else dl();
+  }catch(e){dl()}
+}
+function shareBillImg(id){
+  var b=S.bills.find(function(x){return x.id===id});if(!b)return;
+  toast('फोटो बन रही है…');
+  billImage(b).then(function(blob){
+    var name='bill-'+b.date+'-'+b.id+'.png',file=null;
+    try{file=new File([blob],name,{type:'image/png'})}catch(e){}
+    if(file&&navigator.canShare&&navigator.canShare({files:[file]})){
+      navigator.share({files:[file],title:S.shop}).catch(function(e){if(!e||e.name!=='AbortError')imgFallback(blob,name)});
+    }else imgFallback(blob,name);
+  }).catch(function(){toast('फोटो नहीं बनी। टेक्स्ट वाला बटन इस्तेमाल करें')});
 }
 function custListMsg(){
   var L=['*'+S.shop+' - ग्राहक सूची*','तारीख: '+dmy(todayISO()),''],tot=0;
@@ -285,7 +351,7 @@ function billPreview(){
     '<div><dt>इस बिल का कुल</dt><dd>'+fmt(b.total)+'</dd></div>'+
     (b.paid?'<div><dt>अभी मिले</dt><dd>'+fmt(b.paid)+'</dd></div>':'')+
     '<div class="due"><dt>कुल बाकी</dt><dd>'+fmt(b.due)+'</dd></div></dl>'+
-    '<div class="acts"><a class="btn wa" href="'+link+'" target="_blank" rel="noopener">WhatsApp पर भेजें</a><button class="btn ghost" data-act="copyBill" data-id="'+b.id+'">बिल कॉपी करें</button></div>'+
+    '<button class="btn wa big" data-act="shareImg" data-id="'+b.id+'">बिल की फोटो WhatsApp पर भेजें</button><p class="small" style="margin:6px 0 0">दबाने पर WhatsApp चुनें, फिर ग्राहक चुनें। फोटो में बिल ऐसा ही दिखेगा।</p><div class="acts"><a class="btn ghost" href="'+link+'" target="_blank" rel="noopener">सिर्फ टेक्स्ट भेजें</a><button class="btn ghost" data-act="copyBill" data-id="'+b.id+'">टेक्स्ट कॉपी करें</button></div>'+
     (c&&phoneNorm(c.phone)?'':'<p class="small" style="margin-bottom:0">ग्राहक का नंबर सेव करेंगे तो WhatsApp सीधे उसी के पास खुलेगा।</p>')+
     '<button class="btn big" data-act="newBill">नया बिल बनाएँ</button></section>';
 }
@@ -358,6 +424,7 @@ document.addEventListener('click',function(e){
   var a=t.dataset.act,id=t.dataset.id,row=t.closest('.row');
   if(a==='login'){doLogin();return}
   if(a==='logout'){doLogout();return}
+  if(a==='shareImg'){shareBillImg(id);return}
   if(a==='inc'||a==='dec'){
     var rid=row.dataset.id,cur=num(ui.w[rid]),nx=Math.max(0,cur+(a==='inc'?1:-1));
     ui.w[rid]=nx>0?String(nx):'';row.querySelector('.kg').value=ui.w[rid];updateRow(row);updateTotals();
